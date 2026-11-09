@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bloomwheel: Raid Night</title>
+  <meta name="description" content="Grow flowers with a real hamster's wheel, then send them to fight the pest boss raiding the garden. On Sepolia." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23C9932B' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23F2B33D'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,800;1,9..144,700&family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2.5"/><g stroke="currentColor" stroke-width="1.6"><path d="M16 4v24M4 16h24M7.5 7.5l17 17M24.5 7.5l-17 17"/></g><circle cx="16" cy="16" r="4.5" fill="var(--sun)"/></svg>
+      Bloomwheel <span class="brand-sub">Raid Night</span>
+    </a>
+    <div class="pill" id="pill" aria-live="polite"><span class="dot"></span><span id="pillText">Checking on the hamster…</span></div>
+    <div class="who">
+      <select id="devAccount" hidden aria-label="Local test account"></select>
+      <button class="btn" id="connect">Connect wallet</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <!-- ================================================================ ARENA -->
+  <section class="arena" id="arena">
+    <div class="sky" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="arena-inner">
+      <div class="fighter wheel-side">
+        <svg viewBox="0 0 240 240" class="wheel" aria-hidden="true">
+          <circle cx="120" cy="120" r="112" class="wheel-stand"/>
+          <g id="wheelSpin">
+            <circle cx="120" cy="120" r="96" class="rim"/>
+            <circle cx="120" cy="120" r="84" class="rim thin"/>
+            <g class="spokes"></g>
+            <circle cx="120" cy="120" r="10" class="hub"/>
+          </g>
+          <g id="hamster" class="hamster">
+            <ellipse cx="120" cy="190" rx="30" ry="20" class="ham-body"/>
+            <ellipse cx="116" cy="196" rx="18" ry="10" class="ham-belly"/>
+            <circle cx="142" cy="178" r="7" class="ham-ear"/>
+            <circle cx="145" cy="189" r="2.6" class="ham-eye"/>
+            <circle cx="150" cy="195" r="2" class="ham-nose"/>
+            <g class="zzz"><text x="150" y="160">z</text><text x="162" y="146">z</text><text x="176" y="130">Z</text></g>
+          </g>
+        </svg>
+        <div class="fighter-name">Squeektoshi <small id="rpmText">asleep</small></div>
+      </div>
+
+      <div class="versus" id="versus" aria-hidden="true">
+        <span class="vs">VS</span>
+      </div>
+
+      <div class="fighter boss-side">
+        <div class="boss" id="boss"></div>
+        <div class="fighter-name"><span id="bossName">…</span> <small id="bossTitle"></small></div>
+        <div class="boss-tags" id="bossTags"></div>
+      </div>
+    </div>
+
+    <div class="hud">
+      <div class="hp">
+        <div class="hp-top"><b id="hpLabel">HP</b><span id="hpNumbers">—</span></div>
+        <div class="hp-bar"><i class="hp-fill" id="hpFill"></i><i class="hp-ghost" id="hpGhost"></i></div>
+        <div class="hp-foot" id="hpFoot">&nbsp;</div>
+      </div>
+      <div class="rounds">
+        <div class="round now">
+          <span class="k">Live round <b id="openRound">—</b></span>
+          <span class="v" id="countdown">—</span>
+          <span class="s" id="openArmy">—</span>
+        </div>
+        <div class="round next">
+          <span class="k">Armies waiting <b id="targetRound" hidden>—</b></span>
+          <span class="v" id="nextArmy">—</span>
+          <span class="s" id="myArmy">Your army isn't in it yet</span>
+          <span class="s info" id="nextInfo"></span>
+        </div>
+        <button class="btn sun big" id="attackBtn">Arm an army</button>
+      </div>
+    </div>
+  </section>
+
+  <main>
+    <div class="loot" id="loot" hidden></div>
+
+    <!-- ========================================================== ARMY PICKER -->
+    <dialog class="sheet" id="armySheet">
+      <form method="dialog" class="sheet-inner">
+        <h3>Arm an army for <span id="sheetRound">his next run</span></h3>
+        <p class="muted small">Your army stands ready, however long he sleeps, and fights the next round Squeektoshi runs: every unit of his work hits harder. One army at a time. <b>The boss swipes back</b>: each fighter may be knocked out for 36 rounds (6 hours). The % on each card is its knock-out risk. Loot needs at least one flower and 5% of the killing round's power.</p>
+        <p class="small" id="sheetTips"></p>
+        <div class="army-grid" id="armyGrid"></div>
+        <div class="sheet-foot">
+          <div><b id="armyPower">Power 1</b> <span class="muted small" id="armyMult"></span></div>
+          <div class="row">
+            <button class="btn ghost" value="cancel">Cancel</button>
+            <button class="btn sun" id="armyGo" value="go">Send army</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- ================================================================ PLOTS -->
+    <section id="plots">
+      <div class="section-head">
+        <h2>Your plots</h2>
+        <p id="myScore" class="muted">Plant seeds, grow fighters.</p>
+      </div>
+      <div class="plots" id="plotGrid"></div>
+      <div class="dev" id="devTools" hidden>
+        <b>Local hamster</b>
+        <button class="btn ghost" id="devWake">Wake him up</button>
+        <button class="btn ghost" id="devSprint">Sprint +250</button>
+        <span id="devInfo"></span>
+      </div>
+    </section>
+
+    <!-- ============================================================= FIGHTERS -->
+    <section id="fighters">
+      <div class="section-head">
+        <h2>Your flowers</h2>
+        <div class="row center"><span class="shield" id="shieldText">Garden shield 0%</span><button class="btn ghost" id="guardBtn">Set guards</button></div>
+      </div>
+      <p class="muted small roles">Every picked flower can <b>attack</b> or <b>guard</b>. Power: Common 1 · Uncommon 3 · Rare 8 · Epic 25 · Legendary 100. Roles: 🌻 Sunflower ×1.5 power · 🌺 Poppy +10% crit · ✦ Star Lily dodges swipes · 🌼 Daisy counts double for Rally · ✿ Lotus double shield · ☸ Wheelbloom always ×2, never knocked out.</p>
+      <div class="grid small" id="fighterGrid"></div>
+    </section>
+
+    <dialog class="sheet" id="guardSheet">
+      <form method="dialog" class="sheet-inner">
+        <h3>Guard your garden</h3>
+        <p class="muted small">While Squeektoshi sleeps, the boss bites your growing plants and shortens their lives. Each guard blocks bites equal to its points in % (Lotus counts double), up to 90%. Guards stay home: they can't attack or be sold until you bring them back.</p>
+        <div class="army-grid" id="guardGrid"></div>
+        <div class="sheet-foot">
+          <div><b id="guardShield">Shield 0%</b> <span class="muted small">up to 3 guards</span></div>
+          <div class="row">
+            <button class="btn ghost" value="cancel">Cancel</button>
+            <button class="btn sun" id="guardGo" value="go">Station guards</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- ========================================================= PVP -->
+    <section id="pvp">
+      <div class="section-head">
+        <h2>Heists &amp; Duels</h2>
+        <p class="muted">Player vs player. Everything resolves on the next round Squeektoshi runs, from that round's signed data.</p>
+      </div>
+      <div class="two pvp">
+        <div class="pvp-col">
+          <h3>🦝 Garden Heists</h3>
+          <p class="muted small">Find a rival's Bud-or-bigger plant marked <b>🦝 Rob</b> in the garden below and send up to 5 raiders. <b>Win:</b> steal 25% of its growth (max 400) into one of your plants. <b>Lose:</b> their guards jail your raiders for 36 rounds. Star Lilies always slip away.</p>
+          <ol class="log" id="heistList"></ol>
+        </div>
+        <div class="pvp-col">
+          <h3>🏟 Duel Arena <button class="btn sun" id="challengeBtn">Enter a flower</button></h3>
+          <p class="muted small">Stake a flower in the next round's arena. When he runs, entrants are <b>paired at random</b> from that round's data, so nobody picks their matchup. Score = points × 2 if your species beats theirs (🌻 › ✿ › 🌺 › ✦ › 🌼 › 🌻) × luck 0.5–1.5. <b>Winner takes both flowers.</b></p>
+          <div id="duelList" class="duels"></div>
+        </div>
+      </div>
+    </section>
+
+    <dialog class="sheet" id="heistSheet">
+      <form method="dialog" class="sheet-inner">
+        <h3 id="heistTitle">Rob a garden</h3>
+        <div class="row center" id="heistTarget"></div>
+        <label class="small">Loot goes into your plant <select id="heistReceiver"></select></label>
+        <p class="muted small">Pick up to 5 raiders. Sunflowers hit ×1.5. They're busy until the heist resolves; if it fails they're jailed for 36 rounds.</p>
+        <div class="army-grid" id="heistGrid"></div>
+        <div class="sheet-foot">
+          <div><b id="heistChance">Chance —</b></div>
+          <div class="row">
+            <button class="btn ghost" value="cancel">Cancel</button>
+            <button class="btn sun" id="heistGo" value="go">Send raiders</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="sheet" id="duelSheet">
+      <form method="dialog" class="sheet-inner">
+        <h3 id="duelTitle">Challenge</h3>
+        <div class="row center" id="duelTarget"></div>
+        <div class="army-grid" id="duelGrid"></div>
+        <div class="sheet-foot">
+          <div><b id="duelInfo">Pick one flower</b></div>
+          <div class="row">
+            <button class="btn ghost" value="cancel">Cancel</button>
+            <button class="btn sun" id="duelGo" value="go">Duel</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <section id="garden">
+      <div class="section-head">
+        <h2>The garden</h2>
+        <p class="muted">Everyone's growing plants. They all grow and re-roll together when the hamster's work settles.</p>
+      </div>
+      <div class="grid" id="gardenGrid"></div>
+    </section>
+
+    <section class="two">
+      <div>
+        <div class="section-head"><h2>Battle log</h2></div>
+        <ol class="log" id="log"></ol>
+      </div>
+      <div class="boards">
+        <div class="board"><h3>Top slayers</h3><ol id="slayers"></ol></div>
+        <div class="board"><h3>Top gardeners</h3><ol id="gardeners"></ol></div>
+      </div>
+    </section>
+
+    <section id="rules" class="rules">
+      <h2>How to play</h2>
+      <ol class="steps">
+        <li><b>Grow.</b> Plant up to 3 seeds (free). They grow only when Squeektoshi runs. From Bud onwards, every settled run re-rolls each bloom's rarity. Bigger plants roll better.</li>
+        <li><b>Pick.</b> Picking freezes exactly what you see and turns it into a fighter. Wait for a better roll if you dare, but every plant wilts after 2,000 to 4,000 work.</li>
+        <li><b>Raid.</b> A pest boss is always attacking. The hamster hits it for 1 per unit of work. <b>Arm an army</b> of flowers: it waits for his next run, however long he sleeps, and multiplies that round's damage. Each boss is <b>weak to one species</b> (×2).</li>
+        <li><b>It fights back.</b> While the hamster <b>sleeps</b>, the boss <b>bites</b> your growing plants and shortens their lives, unless you station <b>guards</b>. When your army fights, it <b>swipes</b>: fighters can be knocked out for 36 rounds. Below half HP it <b>enrages</b> and bites and swipes double.</li>
+        <li><b>Team up.</b> <b>Rally</b>: 3+ gardeners in one round deal ×1.5. <b>Combo</b>: back-to-back rounds where he runs add +10% each, up to +50%. <b>Crit</b>: Poppies give a chance of ×2.</li>
+        <li><b>Last hit wins.</b> Armies in the killing round that brought a flower and 5% of its power get a <b>Boss Seed</b> (blooms Rare or better); the biggest gets a <b>Champion Seed</b> (Epic or better). Loot needs a free plot. The next boss is sized to the killing blow, so it always takes a real fight. <b>Squeek holders</b> get a 4th plot and +5 power.</li>
+      </ol>
+      <details>
+        <summary>Bloom odds per re-roll</summary>
+        <table class="odds">
+          <thead><tr><th>Stage</th><th>Grows at</th><th>Legendary</th><th>Epic</th><th>Rare</th><th>Uncommon</th><th>Common</th></tr></thead>
+          <tbody>
+            <tr><td>Bud</td><td>400</td><td>0%</td><td>0.5%</td><td>4%</td><td>20%</td><td>75.5%</td></tr>
+            <tr><td>Bloom</td><td>800</td><td>0.5%</td><td>3%</td><td>12%</td><td>30%</td><td>54.5%</td></tr>
+            <tr><td>Radiant</td><td>1,600</td><td>3%</td><td>9%</td><td>20%</td><td>30%</td><td>38%</td></tr>
+          </tbody>
+        </table>
+      </details>
+      <p class="muted small">Everything is decided on-chain from SqueekCore's settled work: growth, re-rolls, per-round raid damage (<code>roundPage</code>) and loot. Art and metadata are fully on-chain SVG. Testnet only: no token, no value.</p>
+    </section>
+  </main>
+
+  <!-- =============================================================== REVEAL -->
+  <dialog class="reveal" id="reveal">
+    <div class="reveal-inner" id="revealBody"></div>
+    <form method="dialog"><button class="btn sun">Back to the garden</button></form>
+  </dialog>
+
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

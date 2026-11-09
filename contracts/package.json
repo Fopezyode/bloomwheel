@@ -1,0 +1,16 @@
+{
+  "name": "bloomwheel-contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "chain": "hardhat node"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.1.0",
+    "hardhat": "^2.22.17",
+    "solc": "^0.8.28",
+    "viem": "^2.21.54"
+  }
+}

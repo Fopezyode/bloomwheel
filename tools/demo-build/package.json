@@ -1,0 +1,12 @@
+{
+  "name": "bloomwheel-demo-build",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": {
+    "buffer": "6.0.3",
+    "esbuild": "0.24.0",
+    "tevm": "1.0.0-next.142",
+    "viem": "2.37.9"
+  }
+}

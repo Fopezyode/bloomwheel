@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deploy Bloomwheel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+  <style>
+    main { max-width: 700px; }
+    .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-top: 20px; display: grid; gap: 14px; }
+    .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font: 0.86rem var(--mono); }
+    .checks li { display: flex; gap: 10px; align-items: baseline; }
+    .checks li::before { content: "○"; width: 1em; flex: none; color: var(--muted); }
+    .checks li.ok::before { content: "✓"; color: var(--leaf); }
+    .checks li.bad::before { content: "✕"; color: var(--warn); }
+    .checks li.run::before { content: "◔"; color: var(--sun); }
+    .checks li span { overflow-wrap: anywhere; }
+    .msg { padding: 12px 14px; border-radius: 10px; background: var(--sunk); font-size: 0.92rem; }
+    .msg.bad { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); border: 1px solid var(--warn); }
+    .msg.ok { background: color-mix(in srgb, var(--leaf) 14%, var(--surface)); border: 1px solid var(--leaf); }
+    pre { margin: 0; font: 0.82rem var(--mono); background: var(--sunk); padding: 12px; border-radius: 10px; overflow-x: auto; }
+    h3 { font-size: 1.05rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1 style="font-size:2.2rem">Deploy Bloomwheel: Raid Night</h1>
+      <p class="muted">One-time setup from your own wallet: <b>8 transactions</b>, confirmed one by one. Sepolia now charges 1,542 gas per byte of contract code against a 16.7M gas cap per transaction, so the game ships as seven small contracts plus a link. Gas is nearly free on Sepolia right now. If you stop halfway, reopen this page with the same wallet and it continues where it left off.</p>
+      <div class="box">
+        <h3>Checks</h3>
+        <ul class="checks">
+          <li id="cWallet"><span>Browser wallet</span></li>
+          <li id="cAccount"><span>Connected account</span></li>
+          <li id="cChain"><span>On Sepolia</span></li>
+          <li id="cFunds"><span>Enough Sepolia ETH for gas</span></li>
+        </ul>
+        <h3>Steps</h3>
+        <ul class="checks" id="steps"></ul>
+        <div id="msg" class="msg" hidden></div>
+        <div class="row">
+          <button class="btn" id="connect">Connect wallet</button>
+          <button class="btn sun" id="deploy" disabled>Deploy</button>
+        </div>
+        <pre id="out" hidden></pre>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import { createPublicClient, createWalletClient, custom, http, fallback, encodeDeployData, encodeFunctionData, formatEther } from "https://cdn.jsdelivr.net/npm/viem@2.21.54/+esm";
+    import { sepolia } from "https://cdn.jsdelivr.net/npm/viem@2.21.54/chains/+esm";
+    import { CONTRACTS } from "./contract.js";
+    import { CONFIG } from "./config.js";
+    import { describeError, ensureChain, walletName, addWorkingRpc, FAUCETS } from "./wallet.js";
+
+    const $ = (s) => document.querySelector(s);
+    const CAP = 16_700_000n; // just under Sepolia's 16,777,216 per-transaction gas cap
+    const DUMMY = "0x000000000000000000000000000000000000dEaD";
+    const pub = createPublicClient({ chain: sepolia, transport: fallback(CONFIG.rpcs.map((u) => http(u, { timeout: 8000 }))) });
+    let wallet, account, plan;
+
+    // Each step: what it deploys and with which constructor args (resolved from earlier steps).
+    const STEPS = [
+      { key: "petals", name: "BloomPetals", label: "Plant artist (BloomPetals)", args: () => [] },
+      { key: "renderer", name: "BloomRenderer", label: "Card renderer (BloomRenderer)", args: (d) => [d.petals] },
+      { key: "bloomwheel", name: "Bloomwheel", label: "Garden + NFTs (Bloomwheel)", args: (d) => [CONFIG.squeekCore, d.renderer] },
+      { key: "raid", name: "BloomRaid", label: "Raid + bosses (BloomRaid)", args: (d) => [CONFIG.squeekCore, d.bloomwheel] },
+      { key: "guard", name: "BloomGuard", label: "Guards + holder perk (BloomGuard)", args: (d) => [d.bloomwheel, CONFIG.squeekNft, CONFIG.squeekStaking] },
+      { key: "pvp", name: "BloomPvP", label: "Heists + duel arena (BloomPvP)", args: (d) => [CONFIG.squeekCore, d.bloomwheel] },
+      { key: "view", name: "BloomRaidView", label: "Raid view helper (BloomRaidView)", args: (d) => [d.raid] },
+      { key: "linked", label: "Link raid, guard + PvP to garden (setLinks)" },
+    ];
+    const eth = (wei) => { const n = Number(formatEther(wei)); return n === 0 ? "0" : n < 0.0001 ? "< 0.0001" : n.toFixed(4); };
+    const say = (html, kind = "") => { const m = $("#msg"); m.hidden = !html; m.className = `msg ${kind}`; m.innerHTML = html ?? ""; };
+    const mark = (id, ok, text) => { const li = $(id); li.className = ok === null ? "" : ok === "run" ? "run" : ok ? "ok" : "bad"; if (text) li.querySelector("span").innerHTML = text; };
+    const storeKey = () => `bloomwheel-deploy:${account?.toLowerCase()}`;
+    const load = () => { try { return JSON.parse(localStorage.getItem(storeKey())) ?? {}; } catch { return {}; } };
+    const save = (d) => { try { localStorage.setItem(storeKey(), JSON.stringify(d)); } catch {} };
+
+    function drawSteps(d) {
+      $("#steps").innerHTML = STEPS.map((s, i) => `<li id="s${i}" class="${d[s.key] ? "ok" : ""}"><span>${i + 1}. ${s.label}${d[s.key] && s.key !== "linked" ? ` · <code>${d[s.key]}</code>` : ""}</span></li>`).join("");
+    }
+
+    /** Forget saved addresses that have no code on-chain (e.g. a dropped tx). */
+    async function verified() {
+      const d = load();
+      for (const s of STEPS.slice(0, 7)) {
+        if (d[s.key] && !(await pub.getCode({ address: d[s.key] }))) delete d[s.key];
+      }
+      if (d.linked) {
+        const raid = d.bloomwheel && (await pub.readContract({ address: d.bloomwheel, abi: CONTRACTS.Bloomwheel.abi, functionName: "raid" }).catch(() => null));
+        if (!raid || raid.toLowerCase() !== d.raid?.toLowerCase()) delete d.linked;
+      }
+      save(d);
+      return d;
+    }
+
+    async function check() {
+      say(null);
+      $("#deploy").disabled = true;
+      if (!window.ethereum) return mark("#cWallet", false, "No browser wallet found. Install MetaMask or Rabby, then reload this page.");
+      mark("#cWallet", true, `Browser wallet: ${walletName()}`);
+      wallet = createWalletClient({ chain: sepolia, transport: custom(window.ethereum) });
+      [account] = await wallet.requestAddresses();
+      mark("#cAccount", true, `Account ${account}`);
+      try { await ensureChain(wallet, sepolia); mark("#cChain", true, "On Sepolia"); }
+      catch (e) { mark("#cChain", false, "Not on Sepolia"); throw e; }
+
+      const d = await verified();
+      drawSteps(d);
+      if (STEPS.every((s) => d[s.key])) return done(d);
+      const [balance, fees] = await Promise.all([pub.getBalance({ address: account }), pub.estimateFeesPerGas()]);
+      let gasTotal = 0n;
+      plan = {};
+      for (const s of STEPS) {
+        if (d[s.key]) continue;
+        let gas = 80_000n;
+        if (s.name) {
+          const { abi, bytecode } = CONTRACTS[s.name];
+          const args = s.args(new Proxy(d, { get: (t, k) => t[k] ?? DUMMY }));
+          gas = await pub.estimateGas({ account, data: encodeDeployData({ abi, bytecode, args }) }).catch(() => 15_000_000n);
+        }
+        plan[s.key] = gas;
+        gasTotal += gas;
+      }
+      const cost = gasTotal * fees.maxFeePerGas;
+      const enough = balance >= cost;
+      mark("#cFunds", enough, `Balance ${eth(balance)} ETH · remaining steps need about ${eth(cost)} ETH`);
+      if (!enough) {
+        return say(`You need a little free Sepolia ETH first. Paste your address into the ${FAUCETS.map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener">${n}</a>`).join(" or ")}, wait a minute, then press <b>Connect wallet</b> again.<br><code>${account}</code>`, "bad");
+      }
+      const left = STEPS.filter((s) => !d[s.key]).length;
+      $("#deploy").disabled = false;
+      $("#deploy").textContent = `Deploy (${left} transaction${left > 1 ? "s" : ""}, ${eth(cost)} Sepolia ETH)`;
+    }
+
+    function done(d) {
+      // Hand the addresses to the game page on this computer, so it works right away.
+      try {
+        localStorage.setItem("bloomwheel-live", JSON.stringify({ bloomwheel: d.bloomwheel, raid: d.raid, guard: d.guard, pvp: d.pvp, view: d.view, deployBlock: d.deployBlock }));
+      } catch {}
+      say(`Bloomwheel: Raid Night is live on Sepolia! <a class="btn sun" href="./">Open the game</a><br><span class="small">To publish the game for other players, also paste these lines into <code>web/config.js</code> (or send them to Claude).</span>`, "ok");
+      const out = $("#out");
+      out.hidden = false;
+      out.textContent = `  bloomwheel: "${d.bloomwheel}",\n  raid: "${d.raid}",\n  guard: "${d.guard}",\n  pvp: "${d.pvp}",\n  view: "${d.view}",\n  deployBlock: "${d.deployBlock}",`;
+      $("#deploy").disabled = true;
+      $("#deploy").textContent = "Deployed";
+    }
+
+    async function run() {
+      $("#deploy").disabled = true;
+      const d = await verified();
+      for (const [i, s] of STEPS.entries()) {
+        if (d[s.key]) continue;
+        mark(`#s${i}`, "run");
+        say(`Step ${i + 1} of ${STEPS.length}: confirm <b>${s.label}</b> in ${walletName()}…`);
+        await ensureChain(wallet, sepolia);
+        const est = plan?.[s.key] ? (plan[s.key] * 11n) / 10n : 15_000_000n;
+        const hash = s.name
+          ? await wallet.deployContract({ ...CONTRACTS[s.name], args: s.args(d), account, gas: est > CAP ? CAP : est })
+          : await wallet.sendTransaction({ account, to: d.bloomwheel, data: encodeFunctionData({ abi: CONTRACTS.Bloomwheel.abi, functionName: "setLinks", args: [d.raid, d.guard, d.pvp] }), gas: 150_000n });
+        say(`Step ${i + 1}: sent. Waiting for Sepolia… <a href="${CONFIG.explorer}/tx/${hash}" target="_blank" rel="noopener">view tx</a>`);
+        const rc = await pub.waitForTransactionReceipt({ hash });
+        if (rc.status !== "success") throw new Error(`Step ${i + 1} (${s.label}) reverted on-chain.`);
+        if (s.name) d[s.key] = rc.contractAddress;
+        else d.linked = true;
+        if (s.key === "bloomwheel") d.deployBlock = String(rc.blockNumber);
+        save(d);
+        drawSteps(d);
+      }
+      done(d);
+    }
+
+    document.addEventListener("click", async (e) => {
+      if (!e.target.closest("[data-fix-rpc]")) return;
+      try { await addWorkingRpc(CONFIG.rpcs); say("Done. Press <b>Connect wallet</b> again.", "ok"); } catch (x) { say(describeError(x), "bad"); }
+    });
+    $("#connect").onclick = () => check().catch((e) => say(describeError(e), "bad"));
+    $("#deploy").onclick = () => run().catch(async (e) => {
+      await check().catch(() => {}); // refresh balances + steps, then show why it stopped
+      say(describeError(e), "bad");
+    });
+    drawSteps({});
+  </script>
+</body>
+</html>
